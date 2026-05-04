@@ -236,6 +236,12 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
+	// Sync with compact: trigger on session_before_compact as fallback
+	pi.on("session_before_compact", (_event, ctx) => {
+		if (!cfg.enabled || !cfg.renameOnCompact) return;
+		doRename(ctx, "sync with compact");
+	});
+
 	// /session-namer command
 	pi.registerCommand("session-namer", {
 		description: "Session namer: rename | on | off | config <key> <val> | status",
