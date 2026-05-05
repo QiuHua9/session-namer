@@ -6,10 +6,14 @@
 
 | 时机 | 条件 | 说明 |
 |---|---|---|
-| agent_end（与 recap 同步） | session 文件 > `sizeThreshold` | 与 recap 在同一事件触发 |
-| agent_end（与 recap 同步） | `renameOnCompact` 开启时 | 每次对话回合结束都重新评估 |
+| `agent_end` | `compactRename` = `"always"` | 主触发点，与 recap 同步，每次都重命名 |
+| `agent_end` | `compactRename` = `"medium"` 或 `"lazy"` | 与 recap 同步，仅首次命名 |
+| `session_before_compact` | `compactRename` = `"always"` 或 `"medium"` | 每次都重命名 |
+| `session_before_compact` | `compactRename` = `"lazy"` | 仅首次命名（兜底） |
 
-两者都受 `enabled` 和各自的开关控制。
+所有自动触发都受 `minIntervalSec` 最小间隔和 `enabled` 总开关控制。`/session-namer rename` 手动触发不受间隔限制。
+
+使用 `/session-namer rename <name>` 手动指定名字后，自动命名会自动关闭（`enabled` 和 `autoRename` 设为 false），避免后续覆盖用户的选择。需要重新开启时执行 `/session-namer on`。
 
 ## 命名规则
 
@@ -28,11 +32,12 @@ API接口调试 | 权限模块开发
 ## 命令
 
 ```
-/session-namer                    查看当前配置和命名状态
-/session-namer rename             立即重新生成名字
-/session-namer on                 开启自动命名
-/session-namer off                关闭自动命名
-/session-namer config <key> <val> 修改参数
+/session-namer                          查看当前配置和命名状态
+/session-namer rename                   立即让 LLM 生成名字
+/session-namer rename <name>            手动指定名字，自动关闭自动命名
+/session-namer on                       开启自动命名
+/session-namer off                      关闭自动命名
+/session-namer config <key> <val>       修改参数
 ```
 
 ## 可配置参数
@@ -43,7 +48,8 @@ API接口调试 | 权限模块开发
 | `maxLength` | number | 40 | 名字最大字节长度 |
 | `separator` | string | ` \| ` | 多主题分隔符 |
 | `autoRename` | boolean | true | 是否在文件超过阈值时自动命名 |
-| `renameOnCompact` | boolean | true | 是否与 recap 同步在 agent_end 时命名 |
+| `compactRename` | string | `"lazy"` | 命名激进度：`lazy`（仅首次）/ `medium`（compact 每次，recap 仅首次）/ `always`（都每次） |
+| `minIntervalSec` | number | 300 | 自动重命名最小间隔（秒），防止短时间内重复调用 LLM |
 | `enabled` | boolean | true | 总开关 |
 
 ### 修改参数示例
@@ -53,9 +59,17 @@ API接口调试 | 权限模块开发
 /session-namer config maxLength 60
 /session-namer config separator " · "
 /session-namer config autoRename false
+/session-namer config compactRename medium
+/session-namer config minIntervalSec 60
 ```
 
 配置持久化到 `~/.pi/agent/session-namer.json`，重启后保留。
+
+### 错误处理
+
+- `/session-namer status` 会显示配置解析警告，如 JSON 格式错误会提示具体文件和原因
+- 配置文件损坏时，`config` / `on` / `off` 命令会拒绝保存并提示用户先修复或删除配置文件
+- 修复后执行 `/session-namer on` 重新启用即可
 
 ## 文件结构
 

@@ -4,5 +4,6 @@
 	"maxLength": 40,
 	"separator": " | ",
 	"autoRename": true,
-	"renameOnCompact": true
+	"compactRename": "lazy",
+	"minIntervalSec": 300
 }
