@@ -13,7 +13,19 @@
 
 所有自动触发都受 `minIntervalSec` 最小间隔和 `enabled` 总开关控制。`/session-namer rename` 手动触发不受间隔限制。
 
-使用 `/session-namer rename <name>` 手动指定名字后，自动命名会自动关闭（`enabled` 和 `autoRename` 设为 false），避免后续覆盖用户的选择。需要重新开启时执行 `/session-namer on`。
+### rename 与自动命名的联动
+
+- `/session-namer rename`（不带名字）手动触发 LLM 生成后，`nameCount` 会增加，因此在 `lazy` / `medium` 模式下，recap 不再触发首次命名（因为已经命名过了）
+- `/session-namer rename <name>`（带名字）手动指定后，自动命名会自动关闭（`enabled` 和 `autoRename` 设为 false），后续 compact / recap 均不再触发自动命名
+- 需要重新开启时执行 `/session-namer on`
+
+### compactRename 各模式详解
+
+| 模式 | recap（agent_end） | compact（session_before_compact） | 适用场景 |
+|---|---|---|---|
+| `lazy` | 仅首次 | 仅首次 | 低开销，命名一次就不管了 |
+| `medium` | 仅首次 | 每次都触发 | 需要在 compact 时同步更新名字 |
+| `always` | 每次都触发 | 每次都触发 | 始终保持名字与最新内容一致 |
 
 ## 命名规则
 
