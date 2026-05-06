@@ -37,7 +37,7 @@ const ENTRY_TYPE = "session-namer-v1";
 
 const DEFAULT_CONFIG: NamerConfig = {
 	enabled: true,
-	maxLength: 40,
+	maxLength: 120,
 	separator: " | ",
 	compactRename: "lazy",
 	minIntervalSec: 300,

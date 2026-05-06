@@ -56,7 +56,7 @@ API接口调试 | 权限模块开发
 
 | 参数 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `maxLength` | number | 40 | 名字最大字节长度 |
+| `maxLength` | number | 120 | 名字最大字节长度 |
 | `separator` | string | ` \| ` | 多主题分隔符 |
 | `compactRename` | string | `"lazy"` | 命名激进度：`lazy`（仅首次）/ `medium`（compact 每次，recap 仅首次）/ `always`（都每次） |
 | `minIntervalSec` | number | 300 | 自动重命名最小间隔（秒），防止短时间内重复调用 LLM |
