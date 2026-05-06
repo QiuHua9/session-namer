@@ -123,7 +123,8 @@ async function generateName(
 	const model = ctx.model;
 	if (!model) return null;
 
-	const auth = ctx.modelRegistry.getApiKeyAndHeaders(model);
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+	if (!auth.ok) return null;
 	const convText = extractConversationText(ctx);
 
 	const input = convText.length > 8000
@@ -143,9 +144,7 @@ async function generateName(
 		}],
 	}, {
 		apiKey: auth.apiKey,
-		headers: auth.headers,
-		maxTokens: 2000,
-		reasoning: "low",
+		maxTokens: 200,
 		signal,
 	});
 
