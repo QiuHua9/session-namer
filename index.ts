@@ -13,7 +13,7 @@
  * Syncs with recap plugin: triggers naming on the same agent_end event.
  */
 
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -26,10 +26,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 interface NamerConfig {
 	enabled: boolean;
-	sizeThreshold: number;
 	maxLength: number;
 	separator: string;
-	autoRename: boolean;
 	compactRename: "lazy" | "medium" | "always";
 	minIntervalSec: number;
 }
@@ -39,10 +37,8 @@ const ENTRY_TYPE = "session-namer-v1";
 
 const DEFAULT_CONFIG: NamerConfig = {
 	enabled: true,
-	sizeThreshold: 10240,
 	maxLength: 40,
 	separator: " | ",
-	autoRename: true,
 	compactRename: "lazy",
 	minIntervalSec: 300,
 };
@@ -103,12 +99,6 @@ function byteLength(s: string): number {
 	return Buffer.byteLength(s, "utf-8");
 }
 
-function getSessionFileSize(ctx: ExtensionContext): number | null {
-	const file = ctx.sessionManager.getSessionFile();
-	if (!file || !existsSync(file)) return null;
-	try { return statSync(file).size; } catch { return null; }
-}
-
 function extractConversationText(ctx: ExtensionContext): string {
 	const entries = ctx.sessionManager.getEntries();
 	const { messages } = buildSessionContext(entries);
@@ -127,10 +117,6 @@ async function generateName(
 	if (!auth.ok) return null;
 	const convText = extractConversationText(ctx);
 
-	const input = convText.length > 8000
-		? convText.slice(0, 4000) + "\n...\n" + convText.slice(-4000)
-		: convText;
-
 	const systemPrompt = getNamerPrompt()
 		.replace("{{maxLength}}", String(cfg.maxLength))
 		.replace(/{{separator}}/g, cfg.separator);
@@ -139,7 +125,7 @@ async function generateName(
 		systemPrompt,
 		messages: [{
 			role: "user" as const,
-			content: input,
+			content: convText,
 			timestamp: Date.now(),
 		}],
 	}, {
@@ -148,16 +134,10 @@ async function generateName(
 		signal,
 	});
 
-	const rawText = response.content
+	const text = response.content
 		.filter((c: any) => c.type === "text")
 		.map((c: any) => c.text)
 		.join("")
-		.trim();
-
-	// Strip thinking blocks (some models wrap output in <thinking> tags)
-	const text = rawText
-		.replace(/<thinking>[\s\S]*?<\/thinking>/g, "")
-		.replace(/<think[\s\S]*?<\/think>/g, "")
 		.trim();
 
 	if (!text) return null;
@@ -175,7 +155,6 @@ async function generateName(
 // --- State persistence ---
 
 interface NamerState {
-	lastNamedSize: number;
 	nameCount: number;
 	lastRenameTime: number;
 }
@@ -185,7 +164,7 @@ function persistState(pi: ExtensionAPI, state: NamerState) {
 }
 
 function restoreState(entries: ReturnType<ExtensionContext["sessionManager"]["getEntries"]>): NamerState {
-	let state: NamerState = { lastNamedSize: 0, nameCount: 0, lastRenameTime: 0 };
+	let state: NamerState = { nameCount: 0, lastRenameTime: 0 };
 	for (const entry of entries) {
 		if (entry.type === "custom" && (entry as any).customType === ENTRY_TYPE) {
 			const data = (entry as any).data as NamerState;
@@ -199,7 +178,7 @@ function restoreState(entries: ReturnType<ExtensionContext["sessionManager"]["ge
 
 export default function (pi: ExtensionAPI) {
 	let cfg = loadConfig();
-	let state: NamerState = { lastNamedSize: 0, nameCount: 0, lastRenameTime: 0 };
+	let state: NamerState = { nameCount: 0, lastRenameTime: 0 };
 	let isRenaming = false;
 
 	async function doRename(ctx: ExtensionContext, reason: string, signal?: AbortSignal) {
@@ -220,9 +199,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			pi.setSessionName(name);
-			const fileSize = getSessionFileSize(ctx) ?? 0;
 			state.lastRenameTime = Date.now();
-			state.lastNamedSize = fileSize;
 			state.nameCount++;
 			persistState(pi, state);
 
@@ -232,15 +209,6 @@ export default function (pi: ExtensionAPI) {
 		} finally {
 			isRenaming = false;
 		}
-	}
-
-	function checkAndRename(ctx: ExtensionContext, reason: string) {
-		if (!cfg.enabled || !cfg.autoRename) return;
-		const fileSize = getSessionFileSize(ctx);
-		if (fileSize === null) return;
-		if (fileSize < cfg.sizeThreshold) return;
-		if (fileSize <= state.lastNamedSize) return;
-		doRename(ctx, reason);
 	}
 
 	// Restore state on session start
@@ -257,8 +225,6 @@ export default function (pi: ExtensionAPI) {
 			doRename(ctx, "recap (always)");
 		} else if (cr === "medium" || cr === "lazy") {
 			if (state.nameCount === 0) doRename(ctx, "recap (first)");
-		} else if (cfg.autoRename) {
-			checkAndRename(ctx, "size threshold");
 		}
 	});
 
@@ -290,18 +256,13 @@ export default function (pi: ExtensionAPI) {
 
 			if (!action || action === "status") {
 				const currentName = pi.getSessionName();
-				const fileSize = getSessionFileSize(ctx);
 				let status =
 					`[session-namer] Status:\n` +
 					`  enabled: ${cfg.enabled}\n` +
-					`  autoRename: ${cfg.autoRename}\n` +
 					`  compactRename: ${cfg.compactRename}\n` +
 					`  minIntervalSec: ${cfg.minIntervalSec}s\n` +
-					`  sizeThreshold: ${cfg.sizeThreshold} bytes\n` +
 					`  maxLength: ${cfg.maxLength} bytes\n` +
 					`  separator: "${cfg.separator}"\n` +
-					`  fileSize: ${fileSize ?? "unknown"} bytes\n` +
-					`  lastNamedSize: ${state.lastNamedSize}\n` +
 					`  nameCount: ${state.nameCount}\n` +
 					`  currentName: ${currentName ?? "(none)"}`;
 				if (configWarnings.length > 0) {
@@ -316,8 +277,7 @@ export default function (pi: ExtensionAPI) {
 				if (customName) {
 					pi.setSessionName(customName);
 					cfg.enabled = false;
-					cfg.autoRename = false;
-					notifySave(saveGlobalConfig({ enabled: false, autoRename: false }), `[session-namer] Named: ${customName} (auto-rename off)`);
+					notifySave(saveGlobalConfig({ enabled: false }), `[session-namer] Named: ${customName} (auto-rename off)`);
 				} else {
 					await doRename(ctx, "manual");
 				}
@@ -326,15 +286,13 @@ export default function (pi: ExtensionAPI) {
 
 			if (action === "on") {
 				cfg.enabled = true;
-				cfg.autoRename = true;
-				notifySave(saveGlobalConfig({ enabled: true, autoRename: true }), "[session-namer] Enabled.");
+				notifySave(saveGlobalConfig({ enabled: true }), "[session-namer] Enabled.");
 				return;
 			}
 
 			if (action === "off") {
 				cfg.enabled = false;
-				cfg.autoRename = false;
-				notifySave(saveGlobalConfig({ enabled: false, autoRename: false }), "[session-namer] Disabled.");
+				notifySave(saveGlobalConfig({ enabled: false }), "[session-namer] Disabled.");
 				return;
 			}
 
@@ -345,7 +303,7 @@ export default function (pi: ExtensionAPI) {
 					ctx.ui.notify("[session-namer] Usage: /session-namer config <key> <value>", "warning");
 					return;
 				}
-				const numKeys = new Set(["sizeThreshold", "maxLength"]);
+				const numKeys = new Set(["maxLength"]);
 				if (numKeys.has(key)) {
 					const num = Number(val);
 					if (isNaN(num) || num <= 0) {
@@ -372,14 +330,14 @@ export default function (pi: ExtensionAPI) {
 				} else if (key === "separator") {
 					cfg.separator = val;
 					notifySave(saveGlobalConfig({ separator: val }), `[session-namer] separator = "${val}"`);
-				} else if (key === "enabled" || key === "autoRename") {
+				} else if (key === "enabled") {
 					const bool = val === "true" || val === "1";
-					(cfg as any)[key] = bool;
-					notifySave(saveGlobalConfig({ [key]: bool }), `[session-namer] ${key} = ${bool}`);
+					cfg.enabled = bool;
+					notifySave(saveGlobalConfig({ enabled: bool }), `[session-namer] enabled = ${bool}`);
 				} else {
 					ctx.ui.notify(
 						`[session-namer] Unknown config key: ${key}\n` +
-						`Available: sizeThreshold, maxLength, minIntervalSec, separator, enabled, autoRename, compactRename`,
+						`Available: maxLength, minIntervalSec, separator, enabled, compactRename`,
 						"warning",
 					);
 				}

@@ -16,7 +16,7 @@
 ### rename 与自动命名的联动
 
 - `/session-namer rename`（不带名字）手动触发 LLM 生成后，`nameCount` 会增加，因此在 `lazy` / `medium` 模式下，recap 不再触发首次命名（因为已经命名过了）
-- `/session-namer rename <name>`（带名字）手动指定后，自动命名会自动关闭（`enabled` 和 `autoRename` 设为 false），后续 compact / recap 均不再触发自动命名
+- `/session-namer rename <name>`（带名字）手动指定后，自动命名会自动关闭（`enabled` 设为 false），后续 compact / recap 均不再触发自动命名
 - 需要重新开启时执行 `/session-namer on`
 
 ### compactRename 各模式详解
@@ -56,10 +56,8 @@ API接口调试 | 权限模块开发
 
 | 参数 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `sizeThreshold` | number | 10240 | 触发自动命名的文件大小阈值（字节） |
 | `maxLength` | number | 40 | 名字最大字节长度 |
 | `separator` | string | ` \| ` | 多主题分隔符 |
-| `autoRename` | boolean | true | 是否在文件超过阈值时自动命名 |
 | `compactRename` | string | `"lazy"` | 命名激进度：`lazy`（仅首次）/ `medium`（compact 每次，recap 仅首次）/ `always`（都每次） |
 | `minIntervalSec` | number | 300 | 自动重命名最小间隔（秒），防止短时间内重复调用 LLM |
 | `enabled` | boolean | true | 总开关 |
@@ -67,10 +65,8 @@ API接口调试 | 权限模块开发
 ### 修改参数示例
 
 ```
-/session-namer config sizeThreshold 20480
 /session-namer config maxLength 60
 /session-namer config separator " · "
-/session-namer config autoRename false
 /session-namer config compactRename medium
 /session-namer config minIntervalSec 60
 ```
