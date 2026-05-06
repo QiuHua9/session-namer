@@ -18,7 +18,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { convertToLlm, serializeConversation, buildSessionContext } from "@mariozechner/pi-coding-agent";
-import { complete } from "@mariozechner/pi-ai";
+import { completeSimple } from "@mariozechner/pi-ai";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -134,17 +134,18 @@ async function generateName(
 		.replace("{{maxLength}}", String(cfg.maxLength))
 		.replace(/{{separator}}/g, cfg.separator);
 
-	const response = await complete(model, {
+	const response = await completeSimple(model, {
 		systemPrompt,
 		messages: [{
 			role: "user" as const,
-			content: [{ type: "text" as const, text: input }],
+			content: input,
 			timestamp: Date.now(),
 		}],
 	}, {
 		apiKey: auth.apiKey,
 		headers: auth.headers,
-		maxTokens: 300,
+		maxTokens: 2000,
+		reasoning: "low",
 		signal,
 	});
 
@@ -215,7 +216,7 @@ export default function (pi: ExtensionAPI) {
 
 			const name = await generateName(ctx, cfg, signal);
 			if (!name) {
-				if (ctx.hasUI) ctx.ui.notify("[session-namer] LLM returned empty name, skipped.", "warning");
+				if (ctx.hasUI) ctx.ui.notify("[session-namer] LLM returned empty name, skipped. Try /session-namer rename again or /session-namer rename <name>.", "warning");
 				return;
 			}
 
