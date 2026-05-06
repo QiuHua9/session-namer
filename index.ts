@@ -144,14 +144,20 @@ async function generateName(
 	}, {
 		apiKey: auth.apiKey,
 		headers: auth.headers,
-		maxTokens: 100,
+		maxTokens: 300,
 		signal,
 	});
 
-	const text = response.content
+	const rawText = response.content
 		.filter((c: any) => c.type === "text")
 		.map((c: any) => c.text)
 		.join("")
+		.trim();
+
+	// Strip thinking blocks (some models wrap output in <thinking> tags)
+	const text = rawText
+		.replace(/<thinking>[\s\S]*?<\/thinking>/g, "")
+		.replace(/<think[\s\S]*?<\/think>/g, "")
 		.trim();
 
 	if (!text) return null;
